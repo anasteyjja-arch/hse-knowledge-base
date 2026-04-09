@@ -3,9 +3,9 @@ import OpenAI from "openai";
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = req.headers.get("x-api-key");
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "API ключ не указан" }, { status: 401 });
+      return NextResponse.json({ error: "OpenAI API ключ не настроен на сервере" }, { status: 500 });
     }
 
     const formData = await req.formData();

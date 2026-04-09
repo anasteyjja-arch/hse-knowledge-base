@@ -35,9 +35,6 @@ export default function RootLayout({
                 <Link href="/" className="hover:text-blue-200 transition-colors">
                   Предметы
                 </Link>
-                <Link href="/settings" className="hover:text-blue-200 transition-colors">
-                  Настройки
-                </Link>
               </nav>
             </div>
           </div>

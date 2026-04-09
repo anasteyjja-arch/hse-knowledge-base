@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { saveRecording, generateId, getSettings, type Recording } from "@/lib/storage";
+import { saveRecording, generateId, type Recording } from "@/lib/storage";
 
 interface Props {
   subjectId: string;
@@ -31,12 +31,6 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
     e.preventDefault();
     if (!file) return;
 
-    const settings = getSettings();
-    if (!settings.openaiApiKey) {
-      setError("Укажите OpenAI API ключ в настройках для транскрибации");
-      return;
-    }
-
     setUploading(true);
     setError("");
 
@@ -65,9 +59,6 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
 
       const res = await fetch("/api/transcribe", {
         method: "POST",
-        headers: {
-          "x-api-key": settings.openaiApiKey,
-        },
         body: formData,
       });
 
@@ -84,19 +75,18 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
       saveRecording(recording);
       onUploaded();
 
-      // Now generate summary
+      // Now generate structured notes
       if (recording.transcript) {
         recording.status = "summarized";
         const summaryRes = await fetch("/api/summarize", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": settings.openaiApiKey,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: recording.transcript }),
         });
         const summaryData = await summaryRes.json();
-        if (summaryData.summary) {
+        if (summaryData.notes) {
+          recording.notes = summaryData.notes;
+        } else if (summaryData.summary) {
           recording.summary = summaryData.summary;
         }
         saveRecording(recording);

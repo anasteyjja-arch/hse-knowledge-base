@@ -1,3 +1,12 @@
+export interface LectureNotes {
+  topic: string;
+  briefSummary: string;
+  keyPoints: string[];
+  terms: { term: string; definition: string }[];
+  quotes: string[];
+  conclusions: string[];
+}
+
 export interface Recording {
   id: string;
   subjectId: string;
@@ -6,7 +15,8 @@ export interface Recording {
   audioUrl: string;
   audioFileName: string;
   transcript?: string;
-  summary?: string;
+  summary?: string; // legacy plain text
+  notes?: LectureNotes;
   status: "uploaded" | "transcribing" | "transcribed" | "summarized" | "error";
   errorMessage?: string;
   createdAt: string;
