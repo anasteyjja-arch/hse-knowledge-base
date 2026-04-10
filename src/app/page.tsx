@@ -31,19 +31,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Year 2 — hidden until 2026/2027 */}
-      <section className="opacity-40 pointer-events-none select-none">
+      {/* Year 2 — hidden until 2026/2027, will be activated when students move to 2nd year */}
+      {/* <section>
         <h2 className="text-xl font-bold text-hse-navy mb-4 flex items-center gap-2">
-          <span className="bg-gray-400 text-white text-xs font-bold px-2 py-1 rounded">2 курс</span>
+          <span className="bg-hse-blue text-white text-xs font-bold px-2 py-1 rounded">2 курс</span>
           Предметы второго курса
-          <span className="text-sm font-normal text-gray-400 ml-1">— откроется в 2026/2027</span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {year2.map((subject) => (
             <SubjectCard key={subject.id} subject={subject} />
           ))}
         </div>
-      </section>
+      </section> */}
     </div>
   );
 }
