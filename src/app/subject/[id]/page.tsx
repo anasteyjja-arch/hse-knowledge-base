@@ -4,9 +4,10 @@ import { useParams } from "next/navigation";
 import { subjects } from "@/lib/subjects";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getRecordingsBySubject, type Recording } from "@/lib/storage";
+import { getRecordingsBySubject, type Recording } from "@/lib/supabase-storage";
 import { AudioUploader } from "@/components/audio-uploader";
 import { RecordingCard } from "@/components/recording-card";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function SubjectPage() {
   const params = useParams();
@@ -14,14 +15,19 @@ export default function SubjectPage() {
   const subject = subjects.find((s) => s.id === id);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [showUploader, setShowUploader] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  const loadRecordings = async () => {
+    setLoading(true);
+    const recs = await getRecordingsBySubject(id);
+    setRecordings(recs);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    setRecordings(getRecordingsBySubject(id));
+    loadRecordings();
   }, [id]);
-
-  const refreshRecordings = () => {
-    setRecordings(getRecordingsBySubject(id));
-  };
 
   if (!subject) {
     return (
@@ -88,47 +94,54 @@ export default function SubjectPage() {
             <span className="text-sm font-normal text-gray-500 ml-2">({recordings.length})</span>
           )}
         </h2>
-        <button
-          onClick={() => setShowUploader(!showUploader)}
-          className="bg-hse-blue text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-hse-navy transition-colors flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Загрузить аудио
-        </button>
+        {user && (
+          <button
+            onClick={() => setShowUploader(!showUploader)}
+            className="bg-hse-blue text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-hse-navy transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Загрузить аудио
+          </button>
+        )}
       </div>
 
-      {showUploader && (
+      {showUploader && user && (
         <AudioUploader
           subjectId={subject.id}
           onUploaded={() => {
-            refreshRecordings();
+            loadRecordings();
             setShowUploader(false);
           }}
           onCancel={() => setShowUploader(false)}
         />
       )}
 
-      {recordings.length === 0 && !showUploader ? (
+      {loading ? (
+        <div className="text-center py-16 bg-hse-gray rounded-xl">
+          <p className="text-gray-500">Загрузка записей...</p>
+        </div>
+      ) : recordings.length === 0 && !showUploader ? (
         <div className="text-center py-16 bg-hse-gray rounded-xl">
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
           </svg>
           <p className="text-gray-500 mb-1">Пока нет записей</p>
-          <p className="text-sm text-gray-400">Загрузите аудиозапись лекции, чтобы создать конспект</p>
+          <p className="text-sm text-gray-400">
+            {user ? "Загрузите аудиозапись лекции, чтобы создать конспект" : "Войдите, чтобы загрузить аудиозапись"}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {recordings
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .map((rec) => (
-              <RecordingCard
-                key={rec.id}
-                recording={rec}
-                onUpdate={refreshRecordings}
-              />
-            ))}
+          {recordings.map((rec) => (
+            <RecordingCard
+              key={rec.id}
+              recording={rec}
+              onUpdate={loadRecordings}
+              canDelete={rec.created_by === user?.id}
+            />
+          ))}
         </div>
       )}
     </div>

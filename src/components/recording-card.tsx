@@ -1,22 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { deleteRecording, type Recording } from "@/lib/storage";
+import { deleteRecordingById, deleteAudioFile, type Recording } from "@/lib/supabase-storage";
 
 interface Props {
   recording: Recording;
   onUpdate: () => void;
+  canDelete?: boolean;
 }
 
 type Tab = "notes" | "terms" | "quotes" | "transcript";
 
-export function RecordingCard({ recording, onUpdate }: Props) {
+export function RecordingCard({ recording, onUpdate, canDelete = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("notes");
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm("Удалить эту запись?")) {
-      deleteRecording(recording.id);
+      if (recording.audio_url) {
+        await deleteAudioFile(recording.audio_url);
+      }
+      await deleteRecordingById(recording.id);
       onUpdate();
     }
   };
@@ -55,6 +59,12 @@ export function RecordingCard({ recording, onUpdate }: Props) {
             <h3 className="font-medium text-hse-navy truncate">{recording.title}</h3>
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <span>{formattedDate}</span>
+              {recording.user_name && (
+                <>
+                  <span>·</span>
+                  <span className="text-gray-400">{recording.user_name}</span>
+                </>
+              )}
               {notes?.topic && (
                 <>
                   <span>·</span>
@@ -82,9 +92,9 @@ export function RecordingCard({ recording, onUpdate }: Props) {
       {/* Expanded Content */}
       {expanded && (
         <div className="border-t border-gray-100">
-          {recording.errorMessage && (
+          {recording.error_message && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 m-4">
-              {recording.errorMessage}
+              {recording.error_message}
             </div>
           )}
 
@@ -121,7 +131,6 @@ export function RecordingCard({ recording, onUpdate }: Props) {
           <div className="p-4">
             {hasNotes && activeTab === "notes" && (
               <div className="space-y-4">
-                {/* Key Points */}
                 {notes.keyPoints?.length > 0 && (
                   <div>
                     <ol className="space-y-2">
@@ -137,7 +146,6 @@ export function RecordingCard({ recording, onUpdate }: Props) {
                   </div>
                 )}
 
-                {/* Conclusions */}
                 {notes.conclusions?.length > 0 && (
                   <div className="border-t border-gray-100 pt-4">
                     <h4 className="text-sm font-semibold text-hse-navy mb-2 flex items-center gap-1.5">
@@ -227,15 +235,17 @@ export function RecordingCard({ recording, onUpdate }: Props) {
                 Копировать конспект
               </button>
             )}
-            <button
-              onClick={handleDelete}
-              className="text-sm text-red-400 hover:text-red-600 flex items-center gap-1 ml-auto"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Удалить
-            </button>
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                className="text-sm text-red-400 hover:text-red-600 flex items-center gap-1 ml-auto"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Удалить
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { saveRecording, generateId, type Recording } from "@/lib/storage";
+import { createRecording, updateRecording, uploadAudioFile } from "@/lib/supabase-storage";
+import { useAuth } from "@/contexts/auth-context";
 
 interface Props {
   subjectId: string;
@@ -14,8 +15,10 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -29,30 +32,43 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (!file || !user) return;
 
     setUploading(true);
     setError("");
 
     try {
-      // Create a data URL for the audio file (for localStorage storage)
-      const audioUrl = URL.createObjectURL(file);
+      // 1. Upload audio to Supabase Storage
+      setStatus("Загружаем аудио...");
+      const audioUrl = await uploadAudioFile(file, user.id);
 
-      const recording: Recording = {
-        id: generateId(),
-        subjectId,
+      // 2. Create recording in database
+      setStatus("Сохраняем запись...");
+      const recording = await createRecording({
+        subject_id: subjectId,
         title: title || file.name,
         date,
-        audioUrl: "", // We'll store filename reference
-        audioFileName: file.name,
+        audio_url: audioUrl,
+        audio_file_name: file.name,
+        transcript: null,
+        summary: null,
+        notes: null,
         status: "transcribing",
-        createdAt: new Date().toISOString(),
-      };
+        error_message: null,
+        created_by: user.id,
+        user_name: user.user_metadata?.full_name || user.email || "Аноним",
+      });
 
-      saveRecording(recording);
+      if (!recording) {
+        setError("Не удалось сохранить запись. Проверьте, что вы авторизованы.");
+        setUploading(false);
+        return;
+      }
+
       onUploaded();
 
-      // Start transcription in background
+      // 3. Send for transcription
+      setStatus("Транскрибируем аудио...");
       const formData = new FormData();
       formData.append("file", file);
       formData.append("recordingId", recording.id);
@@ -65,39 +81,46 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
       const data = await res.json();
 
       if (data.error) {
-        recording.status = "error";
-        recording.errorMessage = data.error;
-      } else {
-        recording.transcript = data.transcript;
-        recording.status = "transcribed";
-      }
-
-      saveRecording(recording);
-      onUploaded();
-
-      // Now generate structured notes
-      if (recording.transcript) {
-        recording.status = "summarized";
-        const summaryRes = await fetch("/api/summarize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: recording.transcript }),
+        await updateRecording(recording.id, {
+          status: "error",
+          error_message: data.error,
         });
-        const summaryData = await summaryRes.json();
-        if (summaryData.notes) {
-          recording.notes = summaryData.notes;
-        } else if (summaryData.summary) {
-          recording.summary = summaryData.summary;
+      } else {
+        await updateRecording(recording.id, {
+          transcript: data.transcript,
+          status: "transcribed",
+        });
+
+        // 4. Generate structured notes
+        if (data.transcript) {
+          setStatus("Создаём конспект...");
+          const summaryRes = await fetch("/api/summarize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: data.transcript }),
+          });
+          const summaryData = await summaryRes.json();
+
+          if (summaryData.notes) {
+            await updateRecording(recording.id, {
+              notes: summaryData.notes,
+              status: "summarized",
+            });
+          } else if (summaryData.summary) {
+            await updateRecording(recording.id, {
+              summary: summaryData.summary,
+              status: "summarized",
+            });
+          }
         }
-        saveRecording(recording);
-        onUploaded();
       }
 
-      URL.revokeObjectURL(audioUrl);
+      onUploaded();
     } catch (err) {
       setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     } finally {
       setUploading(false);
+      setStatus("");
     }
   };
 
@@ -131,7 +154,7 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
             <p className="text-gray-600">Нажмите для выбора аудиофайла</p>
-            <p className="text-sm text-gray-400 mt-1">MP3, M4A, WAV, OGG, WebM — до 25 МБ</p>
+            <p className="text-sm text-gray-400 mt-1">MP3, M4A, WAV, OGG, WebM — до 50 МБ</p>
           </div>
         )}
       </div>
@@ -165,23 +188,23 @@ export function AudioUploader({ subjectId, onUploaded, onCancel }: Props) {
         </div>
       )}
 
+      {status && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg p-3 mb-4 flex items-center gap-2">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          {status}
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={!file || uploading}
           className="bg-hse-blue text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-hse-navy transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          {uploading ? (
-            <>
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Обрабатывается...
-            </>
-          ) : (
-            "Загрузить и транскрибировать"
-          )}
+          {uploading ? "Обрабатывается..." : "Загрузить и транскрибировать"}
         </button>
         <button
           type="button"
